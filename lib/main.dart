@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/prediction_home_page.dart';
 
 void main() {
   runApp(const AnimalWeightApp());
@@ -22,8 +23,8 @@ class AnimalWeightApp extends StatelessWidget {
       ),
       home: const SplashScreen(),
       routes: {
-        '/auth': (_) => const AuthScreen(),
-        '/dashboard': (_) => const HomeScreen(),
+        '/auth': (_) => const LoginScreen(),
+        '/dashboard': (_) => const PredictionHomePage(),
       },
     );
   }
