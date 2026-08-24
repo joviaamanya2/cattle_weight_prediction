@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'screens/auth_screen.dart';
-import 'screens/home_screen.dart';
-import 'screens/splash_screen.dart';
 import 'screens/prediction_home_page.dart';
+import 'screens/splash_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   runApp(const AnimalWeightApp());
@@ -15,16 +15,14 @@ class AnimalWeightApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Animal Weight Predictor',
+      title: 'Cattle Weight By Jaguza',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
-        useMaterial3: true,
-      ),
+      theme: buildAppTheme(),
       home: const SplashScreen(),
       routes: {
         '/auth': (_) => const LoginScreen(),
         '/dashboard': (_) => const PredictionHomePage(),
+        '/signup': (_) => const SignUpScreen(),
       },
     );
   }

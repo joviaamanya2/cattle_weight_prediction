@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../theme/app_theme.dart';
 import 'prediction_home_page.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -17,9 +18,9 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
 
-  static const Color primaryGreen = Color(0xFF1B5E20);
-  static const Color textDark = Color(0xFF1F2937);
-  static const Color textGrey = Color(0xFF6B7280);
+  static const Color primaryGreen = AppColors.primary;
+  static const Color textDark = AppColors.ink;
+  static const Color textGrey = AppColors.inkMuted;
 
   @override
   void initState() {
@@ -102,7 +103,7 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.canvas,
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -135,23 +136,25 @@ class _SplashScreenState extends State<SplashScreen>
                   child: const Column(
                     children: [
                       Text(
-                        'Animal Weight',
+                        'Cattle Weight',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 30,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           color: textDark,
                           height: 1.2,
+                          letterSpacing: -0.5,
                         ),
                       ),
                       Text(
-                        'Predictor',
+                        'By Jaguza',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 30,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           color: primaryGreen,
                           height: 1.2,
+                          letterSpacing: -0.5,
                         ),
                       ),
                     ],
@@ -219,7 +222,7 @@ class _AppLogo extends StatelessWidget {
 
   final double size;
 
-  static const Color primaryGreen = Color(0xFF1B5E20);
+  static const Color primaryGreen = AppColors.primary;
 
   @override
   Widget build(BuildContext context) {
@@ -229,16 +232,14 @@ class _AppLogo extends StatelessWidget {
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(
-          color: primaryGreen.withOpacity(0.15),
-          width: 2,
-        ),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.raised,
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         child: Image.asset(
-          'assets/images/logo.png',
+          'assets/images/app_icon.png',
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) {
             return const Center(

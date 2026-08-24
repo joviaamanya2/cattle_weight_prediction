@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 // ============================================================
 // LOGIN SCREEN
 // ============================================================
@@ -46,14 +48,14 @@ class _LoginScreenState extends State<LoginScreen> {
       // Clear all routes and navigate to home
       Navigator.pushNamedAndRemoveUntil(
         context,
-        '/home',
+        '/dashboard',
         (route) => false,
       );
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Welcome back!'),
-          backgroundColor: Colors.green,
+          backgroundColor: AppColors.primary,
         ),
       );
     });
@@ -62,12 +64,12 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.canvas,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.canvas,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.grey),
+          icon: const Icon(Icons.arrow_back_rounded, color: AppColors.ink),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -87,13 +89,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 100,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(30),
+                    color: AppColors.primarySoft,
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
                   ),
                   child: Icon(
                     Icons.pets,
                     size: 50,
-                    color: Colors.green.shade700,
+                    color: AppColors.primary,
                   ),
                 ),
 
@@ -104,8 +106,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   'Welcome Back',
                   style: TextStyle(
                     fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.grey.shade900,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
                   ),
                 ),
 
@@ -115,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   'Sign in to access your predictions',
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.grey.shade600,
+                    color: AppColors.inkMuted,
                   ),
                 ),
 
@@ -134,24 +136,23 @@ class _LoginScreenState extends State<LoginScreen> {
                           labelText: 'Email',
                           hintText: 'Enter your email',
                           prefixIcon: const Icon(Icons.email_outlined),
+                          filled: true,
+                          fillColor: AppColors.field,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.grey.shade300,
-                            ),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.green.shade700,
-                              width: 2,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: const BorderSide(
+                              color: AppColors.primary,
+                              width: 1.5,
                             ),
                           ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
@@ -186,24 +187,23 @@ class _LoginScreenState extends State<LoginScreen> {
                               });
                             },
                           ),
+                          filled: true,
+                          fillColor: AppColors.field,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.grey.shade300,
-                            ),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.green.shade700,
-                              width: 2,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: const BorderSide(
+                              color: AppColors.primary,
+                              width: 1.5,
                             ),
                           ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
@@ -238,12 +238,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade700,
+                            backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(AppRadius.pill),
                             ),
-                            elevation: 2,
+                            elevation: 0,
                           ),
                           child: _isLoading
                               ? const SizedBox(
@@ -270,13 +270,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 16),
 
                 // Sign Up Link
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
                       "Don't have an account?",
                       style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color: AppColors.inkMuted,
                       ),
                     ),
                     TextButton(
@@ -352,12 +353,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     content: Text(
                       'Password reset link sent to your email',
                     ),
-                    backgroundColor: Colors.green,
+                    backgroundColor: AppColors.primary,
                   ),
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade700,
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
               ),
               child: const Text('Send'),
@@ -423,14 +424,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
       // Clear all routes and navigate to home
       Navigator.pushNamedAndRemoveUntil(
         context,
-        '/home',
+        '/dashboard',
         (route) => false,
       );
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Account created successfully!'),
-          backgroundColor: Colors.green,
+          backgroundColor: AppColors.primary,
         ),
       );
     });
@@ -439,12 +440,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.canvas,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.canvas,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.grey),
+          icon: const Icon(Icons.arrow_back_rounded, color: AppColors.ink),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -464,13 +465,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   height: 100,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(30),
+                    color: AppColors.primarySoft,
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
                   ),
                   child: Icon(
                     Icons.person_add_alt_1,
                     size: 50,
-                    color: Colors.green.shade700,
+                    color: AppColors.primary,
                   ),
                 ),
 
@@ -481,8 +482,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   'Create Account',
                   style: TextStyle(
                     fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.grey.shade900,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
                   ),
                 ),
 
@@ -492,7 +493,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   'Join our community of smart farmers',
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.grey.shade600,
+                    color: AppColors.inkMuted,
                   ),
                 ),
 
@@ -510,24 +511,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           labelText: 'Full Name',
                           hintText: 'Enter your full name',
                           prefixIcon: const Icon(Icons.person_outline),
+                          filled: true,
+                          fillColor: AppColors.field,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.grey.shade300,
-                            ),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.green.shade700,
-                              width: 2,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: const BorderSide(
+                              color: AppColors.primary,
+                              width: 1.5,
                             ),
                           ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
@@ -550,24 +550,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           labelText: 'Email',
                           hintText: 'Enter your email',
                           prefixIcon: const Icon(Icons.email_outlined),
+                          filled: true,
+                          fillColor: AppColors.field,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.grey.shade300,
-                            ),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.green.shade700,
-                              width: 2,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: const BorderSide(
+                              color: AppColors.primary,
+                              width: 1.5,
                             ),
                           ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
@@ -602,24 +601,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               });
                             },
                           ),
+                          filled: true,
+                          fillColor: AppColors.field,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.grey.shade300,
-                            ),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.green.shade700,
-                              width: 2,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: const BorderSide(
+                              color: AppColors.primary,
+                              width: 1.5,
                             ),
                           ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
@@ -655,24 +653,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               });
                             },
                           ),
+                          filled: true,
+                          fillColor: AppColors.field,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.grey.shade300,
-                            ),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.green.shade700,
-                              width: 2,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: const BorderSide(
+                              color: AppColors.primary,
+                              width: 1.5,
                             ),
                           ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
@@ -693,24 +690,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         decoration: InputDecoration(
                           labelText: 'I am a',
                           prefixIcon: const Icon(Icons.person_outline),
+                          filled: true,
+                          fillColor: AppColors.field,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.grey.shade300,
-                            ),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: BorderSide.none,
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.green.shade700,
-                              width: 2,
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            borderSide: const BorderSide(
+                              color: AppColors.primary,
+                              width: 1.5,
                             ),
                           ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
                         ),
                         items: const [
                           DropdownMenuItem(
@@ -752,12 +748,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _handleSignUp,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade700,
+                            backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(AppRadius.pill),
                             ),
-                            elevation: 2,
+                            elevation: 0,
                           ),
                           child: _isLoading
                               ? const SizedBox(
@@ -784,13 +780,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 const SizedBox(height: 16),
 
                 // Sign In Link
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
                       'Already have an account?',
                       style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color: AppColors.inkMuted,
                       ),
                     ),
                     TextButton(

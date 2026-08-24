@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../services/prediction_api.dart';
+
 import '../models/prediction_record.dart';
+import '../services/prediction_api.dart';
+import '../theme/app_theme.dart';
+import '../widgets/ui_kit.dart';
 
 class PredictionHomePage extends StatefulWidget {
   const PredictionHomePage({super.key});
@@ -26,11 +29,20 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
 
   bool _isPredicting = false;
 
+  /// Whether the result on screen has been written to history yet. The name
+  /// is only collected once a result exists, so both live here rather than
+  /// in the prediction form.
+  bool _resultSaved = false;
+  String? _savedName;
+
   // ------------------------------------------------------------
   // LOCAL HISTORY
   // ------------------------------------------------------------
 
   final List<_PredictionHistoryItem> _history = [];
+
+  /// History tab filter: 0 = all, 1 = today.
+  int _historyFilter = 0;
 
   // ------------------------------------------------------------
   // TAB CONTROLLER
@@ -67,6 +79,8 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
         _selectedImage = image;
         _prediction = null;
         _errorMessage = null;
+        _resultSaved = false;
+        _savedName = null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -88,6 +102,8 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
       _selectedImage = null;
       _prediction = null;
       _errorMessage = null;
+      _resultSaved = false;
+      _savedName = null;
     });
   }
 
@@ -98,7 +114,8 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
   Future<void> _runPrediction() async {
     if (_selectedImage == null) {
       setState(() {
-        _errorMessage = 'Please select a cattle image before running prediction.';
+        _errorMessage =
+            'Please select a cattle image before running prediction.';
       });
       return;
     }
@@ -107,14 +124,16 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
       _isPredicting = true;
       _prediction = null;
       _errorMessage = null;
+      _resultSaved = false;
+      _savedName = null;
     });
 
     try {
-      final String cattleName = _nameController.text.trim();
-
+      // The animal is still unnamed at this point — naming happens in the
+      // save prompt once a result comes back.
       final result = await PredictionApiService.instance.predictWeight(
         animalId: 'TEMP-${DateTime.now().millisecondsSinceEpoch}',
-        animalName: cattleName.isEmpty ? 'Unnamed cattle' : cattleName,
+        animalName: 'Unnamed cattle',
         animalBreed: _selectedBreed,
         image: _selectedImage!,
       );
@@ -126,17 +145,8 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
         _isPredicting = false;
       });
 
-      // Save prediction to local history.
-      _history.insert(
-        0,
-        _PredictionHistoryItem(
-          name: cattleName.isEmpty ? 'Unnamed cattle' : cattleName,
-          animalType: _animalTypeLabel,
-          breed: _selectedBreed,
-          weight: result.predictedWeightKg,
-          date: DateTime.now(),
-        ),
-      );
+      // Nothing is written to history until the farmer confirms.
+      await _promptSaveResult();
     } on PredictionApiException catch (e) {
       if (!mounted) return;
 
@@ -157,6 +167,137 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
   }
 
   // ------------------------------------------------------------
+  // SAVE PROMPT
+  // ------------------------------------------------------------
+
+  /// Asks whether to keep the result, collecting the cattle name at the same
+  /// time. Declining leaves the result on screen but out of history.
+  Future<void> _promptSaveResult() async {
+    final record = _prediction;
+    if (record == null) return;
+
+    _nameController.clear();
+
+    final bool? save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        titlePadding: const EdgeInsets.fromLTRB(
+          AppSpacing.xxl,
+          AppSpacing.xxl,
+          AppSpacing.xxl,
+          0,
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(
+          AppSpacing.xxl,
+          AppSpacing.md,
+          AppSpacing.xxl,
+          0,
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(
+          AppSpacing.xxl,
+          AppSpacing.xl,
+          AppSpacing.xxl,
+          AppSpacing.xl,
+        ),
+        title: const Text('Save this result?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.primarySoft,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${record.predictedWeightKg.toStringAsFixed(1)} kg',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$_animalTypeLabel • $_selectedBreed',
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            AppTextField(
+              label: 'Cattle name',
+              controller: _nameController,
+              hint: 'e.g. Nakato',
+              helper: 'Leave blank to save as “Unnamed cattle”.',
+              textInputAction: TextInputAction.done,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.inkMuted,
+              minimumSize: const Size(88, 46),
+            ),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(112, 46),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (save == true) {
+      _saveCurrentResult(_nameController.text.trim());
+    }
+  }
+
+  void _saveCurrentResult(String rawName) {
+    final record = _prediction;
+    if (record == null) return;
+
+    final String name = rawName.isEmpty ? 'Unnamed cattle' : rawName;
+
+    setState(() {
+      _history.insert(
+        0,
+        _PredictionHistoryItem(
+          name: name,
+          animalType: _animalTypeLabel,
+          breed: _selectedBreed,
+          weight: record.predictedWeightKg,
+          date: DateTime.now(),
+        ),
+      );
+      _resultSaved = true;
+      _savedName = name;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Saved “$name” to history.')),
+    );
+  }
+
+  // ------------------------------------------------------------
   // ANIMAL TYPE LABEL
   // ------------------------------------------------------------
 
@@ -172,71 +313,108 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
   }
 
   // ------------------------------------------------------------
+  // DERIVED STATS
+  // ------------------------------------------------------------
+
+  int get _todayCount {
+    final now = DateTime.now();
+    return _history
+        .where((h) =>
+            h.date.year == now.year &&
+            h.date.month == now.month &&
+            h.date.day == now.day)
+        .length;
+  }
+
+  double get _averageWeight {
+    if (_history.isEmpty) return 0;
+    final total = _history.fold<double>(0, (sum, h) => sum + h.weight);
+    return total / _history.length;
+  }
+
+  double get _heaviestWeight {
+    if (_history.isEmpty) return 0;
+    return _history.map((h) => h.weight).reduce((a, b) => a > b ? a : b);
+  }
+
+  List<_PredictionHistoryItem> get _visibleHistory {
+    if (_historyFilter == 0) return _history;
+    final now = DateTime.now();
+    return _history
+        .where((h) =>
+            h.date.year == now.year &&
+            h.date.month == now.month &&
+            h.date.day == now.day)
+        .toList();
+  }
+
+  // ------------------------------------------------------------
   // IMAGE PREVIEW
   // ------------------------------------------------------------
 
   Widget _buildImagePreview() {
     if (_selectedImage == null) {
-      return Container(
-        height: 240,
-        width: double.infinity,
+      return DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: Colors.grey.shade300,
-            width: 1.5,
-          ),
+          color: AppColors.field,
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.photo_camera_outlined,
-              size: 48,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No cattle image selected',
-              style: TextStyle(
-                color: Colors.grey.shade700,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
+        child: SizedBox(
+          height: 200,
+          width: double.infinity,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.add_a_photo_outlined,
+                  color: AppColors.primary,
+                  size: 24,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Add a clear cattle photo',
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 13,
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'No cattle photo yet',
+                style: Theme.of(context).textTheme.titleSmall,
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                'Add a clear side-on photo',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: Stack(
         children: [
           SizedBox(
-            height: 280,
+            height: 240,
             width: double.infinity,
             child: FutureBuilder(
               future: _selectedImage!.readAsBytes(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(),
+                  return const ColoredBox(
+                    color: AppColors.field,
+                    child: Center(child: CircularProgressIndicator()),
                   );
                 }
 
                 if (snapshot.hasError || !snapshot.hasData) {
-                  return const Center(
-                    child: Text('Unable to preview image'),
+                  return const ColoredBox(
+                    color: AppColors.field,
+                    child: Center(child: Text('Unable to preview image')),
                   );
                 }
 
@@ -250,18 +428,15 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
             ),
           ),
           Positioned(
-            top: 10,
-            right: 10,
-            child: Material(
-              color: Colors.black54,
-              shape: const CircleBorder(),
-              child: IconButton(
-                onPressed: _isPredicting ? null : _clearImage,
-                icon: const Icon(
-                  Icons.close,
-                  color: Colors.white,
-                ),
-              ),
+            top: AppSpacing.sm,
+            right: AppSpacing.sm,
+            child: CircleIconButton(
+              icon: Icons.close_rounded,
+              tooltip: 'Remove photo',
+              size: 36,
+              background: Colors.black54,
+              foreground: Colors.white,
+              onPressed: _isPredicting ? null : _clearImage,
             ),
           ),
         ],
@@ -278,101 +453,84 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
       return const SizedBox.shrink();
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.green.shade300,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.green.shade100.withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade700,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.check_circle_outline,
-                  color: Colors.white,
-                  size: 20,
+              Expanded(
+                child: Text(
+                  'Prediction result',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
-              const SizedBox(width: 12),
-              Text(
-                'Prediction Result',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.green.shade900,
+              if (_resultSaved)
+                const StatusChip(
+                  label: 'Saved',
+                  icon: Icons.check_rounded,
+                  foreground: AppColors.success,
+                  background: AppColors.successSoft,
+                )
+              else
+                const StatusChip(
+                  label: 'Not saved',
+                  icon: Icons.bookmark_border_rounded,
+                  foreground: AppColors.warning,
+                  background: AppColors.warningSoft,
                 ),
-              ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: AppSpacing.xl),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              vertical: 28,
-              horizontal: 16,
-            ),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.shade100,
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: Column(
               children: [
-                
-                const SizedBox(height: 8),
                 Text(
                   '${_prediction!.predictedWeightKg.toStringAsFixed(1)} kg',
-                  style: TextStyle(
-                    fontSize: 42,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green.shade800,
+                  style: const TextStyle(
+                    fontSize: 40,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryDark,
+                    height: 1.1,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
-                  'Estimated from the submitted cattle image',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.grey.shade500,
-                    fontSize: 12,
-                  ),
+                  'Estimated from the submitted photo',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
-          _resultRow('Animal Type', _animalTypeLabel),
+          const SizedBox(height: AppSpacing.lg),
+          _resultRow('Animal type', _animalTypeLabel),
           _resultRow('Breed', _selectedBreed),
-          if (_nameController.text.trim().isNotEmpty)
-            _resultRow('Cattle Name', _nameController.text.trim()),
-          const SizedBox(height: 16),
-         
+          if (_savedName != null) _resultRow('Cattle name', _savedName!),
+          const SizedBox(height: AppSpacing.md),
+          const AppBanner(
+            message:
+                'This is an estimate. Use a calibrated scale for sales, '
+                'treatment or dosing decisions.',
+            icon: Icons.info_outline_rounded,
+            foreground: AppColors.inkMuted,
+            background: AppColors.field,
+          ),
+          // Declining the prompt should not strand the result.
+          if (!_resultSaved) ...[
+            const SizedBox(height: AppSpacing.md),
+            OutlinedButton.icon(
+              onPressed: _promptSaveResult,
+              icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+              label: const Text('Save to history'),
+            ),
+          ],
         ],
       ),
     );
@@ -384,47 +542,22 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
 
   Widget _resultRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 14,
-              ),
-            ),
+            child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           Flexible(
             child: Text(
               value,
               textAlign: TextAlign.right,
-              style: TextStyle(
-                color: Colors.grey.shade900,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
+              style: Theme.of(context).textTheme.titleSmall,
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // ------------------------------------------------------------
-  // SECTION TITLE
-  // ------------------------------------------------------------
-
-  Widget _sectionTitle(String title) {
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w700,
-        color: Colors.grey.shade900,
       ),
     );
   }
@@ -434,406 +567,329 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
   // ------------------------------------------------------------
 
   Widget _buildPredictTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 700),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Green Info Card
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade700,
-                  borderRadius: BorderRadius.circular(12),
+    return SafeArea(
+      bottom: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.sm,
+          AppSpacing.xl,
+          AppSpacing.section,
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 700),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ------------------------------------------------
+                // HERO
+                // ------------------------------------------------
+                _buildHero(),
+                const SizedBox(height: AppSpacing.xl),
+
+                // ------------------------------------------------
+                // STAT GRID
+                // ------------------------------------------------
+                _buildStatGrid(),
+                const SizedBox(height: AppSpacing.section),
+
+                // ------------------------------------------------
+                // CATTLE INFORMATION
+                // ------------------------------------------------
+                const SectionHeader(
+                  title: 'Cattle details',
+                  subtitle: 'Tell us what we are weighing',
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.eco,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Smart Cattle Weight ',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                            ),
+                const SizedBox(height: AppSpacing.lg),
+
+                AppCard(
+                  child: Column(
+                    children: [
+                      AppDropdownField<String>(
+                        label: 'Animal type',
+                        required: true,
+                        value: _selectedAnimal,
+                        items: const [
+                          DropdownMenuItem(value: 'cow', child: Text('Cow')),
+                          DropdownMenuItem(value: 'bull', child: Text('Bull')),
+                          DropdownMenuItem(value: 'calf', child: Text('Calf')),
+                        ],
+                        onChanged: _isPredicting
+                            ? null
+                            : (value) {
+                                if (value == null) return;
+                                setState(() => _selectedAnimal = value);
+                              },
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      AppDropdownField<String>(
+                        label: 'Breed',
+                        required: true,
+                        value: _selectedBreed,
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Holstein',
+                            child: Text('Holstein'),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Upload a photo to know the weight of your cattle.',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 13,
-                            ),
+                          DropdownMenuItem(
+                            value: 'Local',
+                            child: Text('Local'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Angus',
+                            child: Text('Angus'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Jersey',
+                            child: Text('Jersey'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Friesian',
+                            child: Text('Friesian'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Ankole',
+                            child: Text('Ankole'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Other',
+                            child: Text('Other'),
                           ),
                         ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 28),
-
-              Text(
-                'Estimate cattle weight using a clear photo.',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 15,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // ------------------------------------------------
-              // CATTLE INFORMATION
-              // ------------------------------------------------
-
-              _sectionTitle('Cattle Information'),
-              const SizedBox(height: 16),
-
-              Text(
-                'Cattle Name',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade800,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _nameController,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  hintText: 'Enter cattle name (optional)',
-                  prefixIcon: const Icon(
-                    Icons.label_outline,
-                    color: Colors.grey,
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.grey.shade300,
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.grey.shade300,
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.green.shade700,
-                      width: 2,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-
-              Text(
-                'Animal Type',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade800,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedAnimal,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(
-                    Icons.pets_outlined,
-                    color: Colors.grey,
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.grey.shade300,
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.grey.shade300,
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.green.shade700,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'cow',
-                    child: Text('Cow'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'bull',
-                    child: Text('Bull'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'calf',
-                    child: Text('Calf'),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() {
-                    _selectedAnimal = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 18),
-
-              Text(
-                'Breed',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade800,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedBreed,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(
-                    Icons.category_outlined,
-                    color: Colors.grey,
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.grey.shade300,
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.grey.shade300,
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.green.shade700,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'Holstein',
-                    child: Text('Holstein'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Local',
-                    child: Text('Local'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Angus',
-                    child: Text('Angus'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Jersey',
-                    child: Text('Jersey'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Friesian',
-                    child: Text('Friesian'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Ankole',
-                    child: Text('Ankole'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Other',
-                    child: Text('Other'),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() {
-                    _selectedBreed = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 28),
-
-              // ------------------------------------------------
-              // PHOTO
-              // ------------------------------------------------
-
-              _sectionTitle('Cattle Image'),
-              const SizedBox(height: 16),
-              _buildImagePreview(),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isPredicting
-                          ? null
-                          : () => _pickImage(ImageSource.gallery),
-                      icon: const Icon(Icons.photo_library_outlined),
-                      label: const Text('Gallery'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 15,
-                        ),
-                        side: BorderSide(
-                          color: Colors.green.shade400,
-                        ),
-                        foregroundColor: Colors.green.shade800,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isPredicting
-                          ? null
-                          : () => _pickImage(ImageSource.camera),
-                      icon: const Icon(Icons.camera_alt_outlined),
-                      label: const Text('Camera'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 15,
-                        ),
-                        side: BorderSide(
-                          color: Colors.green.shade400,
-                        ),
-                        foregroundColor: Colors.green.shade800,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // ------------------------------------------------
-              // ERROR
-              // ------------------------------------------------
-
-              if (_errorMessage != null)
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 18),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.red.shade200,
-                    ),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        color: Colors.red.shade700,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(
-                            color: Colors.red.shade800,
-                          ),
-                        ),
+                        onChanged: _isPredicting
+                            ? null
+                            : (value) {
+                                if (value == null) return;
+                                setState(() => _selectedBreed = value);
+                              },
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: AppSpacing.section),
 
-              // ------------------------------------------------
-              // PREDICT BUTTON
-              // ------------------------------------------------
+                // ------------------------------------------------
+                // PHOTO
+                // ------------------------------------------------
+                const SectionHeader(
+                  title: 'Cattle photo',
+                  subtitle: 'A clear side view gives the best estimate',
+                ),
+                const SizedBox(height: AppSpacing.lg),
 
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _isPredicting ? null : _runPrediction,
-                  icon: _isPredicting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                AppCard(
+                  child: Column(
+                    children: [
+                      _buildImagePreview(),
+                      const SizedBox(height: AppSpacing.md),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isPredicting
+                                  ? null
+                                  : () => _pickImage(ImageSource.gallery),
+                              icon: const Icon(
+                                Icons.photo_library_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Gallery'),
+                            ),
                           ),
-                        )
-                      : const Icon(Icons.monitor_weight_outlined),
-                  label: Text(
-                    _isPredicting ? 'Calculating weight...' : 'Predict Weight',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 17,
-                    ),
-                    backgroundColor: Colors.green.shade700,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey.shade400,
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isPredicting
+                                  ? null
+                                  : () => _pickImage(ImageSource.camera),
+                              icon: const Icon(
+                                Icons.photo_camera_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Camera'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 28),
-              _buildPredictionResult(),
-              const SizedBox(height: 32),
-            ],
+                const SizedBox(height: AppSpacing.xl),
+
+                // ------------------------------------------------
+                // ERROR
+                // ------------------------------------------------
+                if (_errorMessage != null) ...[
+                  AppBanner(
+                    message: _errorMessage!,
+                    icon: Icons.error_outline_rounded,
+                    foreground: AppColors.danger,
+                    background: AppColors.dangerSoft,
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+
+                // ------------------------------------------------
+                // PREDICT BUTTON
+                // ------------------------------------------------
+                FilledButton(
+                  onPressed: _isPredicting ? null : _runPrediction,
+                  child: _isPredicting
+                      ? const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(width: AppSpacing.md),
+                            Text('Calculating weight...'),
+                          ],
+                        )
+                      : const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text('Predict Weight'),
+                            SizedBox(width: AppSpacing.sm),
+                            Icon(Icons.arrow_forward_rounded, size: 18),
+                          ],
+                        ),
+                ),
+
+                if (_prediction != null) ...[
+                  const SizedBox(height: AppSpacing.xxl),
+                  _buildPredictionResult(),
+                ],
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  // ------------------------------------------------------------
+  // HERO
+  // ------------------------------------------------------------
+
+  Widget _buildHero() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primary, AppColors.primaryDark],
+        ),
+        boxShadow: AppShadows.raised,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Know your cattle’s weight',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Snap a photo and get an instant estimate — no scale needed.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.monitor_weight_outlined,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------
+  // STAT GRID
+  // ------------------------------------------------------------
+
+  Widget _buildStatGrid() {
+    final tiles = [
+      StatTile(
+        icon: Icons.insights_rounded,
+        value: '${_history.length}',
+        label: 'Total\nsaved',
+        accent: AppColors.peach,
+        accentSoft: AppColors.peachSoft,
+      ),
+      StatTile(
+        icon: Icons.today_rounded,
+        value: '$_todayCount',
+        label: 'Done\ntoday',
+        accent: AppColors.leaf,
+        accentSoft: AppColors.leafSoft,
+      ),
+      StatTile(
+        icon: Icons.speed_rounded,
+        value: _history.isEmpty ? '—' : _averageWeight.toStringAsFixed(0),
+        label: 'Avg\nkg',
+        accent: AppColors.periwinkle,
+        accentSoft: AppColors.periwinkleSoft,
+      ),
+      StatTile(
+        icon: Icons.trending_up_rounded,
+        value: _history.isEmpty ? '—' : _heaviestWeight.toStringAsFixed(0),
+        label: 'Max\nkg',
+        accent: AppColors.rose,
+        accentSoft: AppColors.roseSoft,
+      ),
+    ];
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: tiles[0]),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(child: tiles[1]),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Row(
+          children: [
+            Expanded(child: tiles[2]),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(child: tiles[3]),
+          ],
+        ),
+      ],
     );
   }
 
@@ -842,203 +898,170 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
   // ------------------------------------------------------------
 
   Widget _buildHistoryTab() {
-    return _history.isEmpty
-        ? Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.history,
-                  size: 80,
-                  color: Colors.grey.shade300,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'No Predictions Yet',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Your cattle weight predictions will appear here',
-                  style: TextStyle(
-                    color: Colors.grey.shade500,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _selectedTabIndex = 0;
-                    });
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('Make a Prediction'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade700,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ],
+    if (_history.isEmpty) {
+      return SafeArea(
+        bottom: false,
+        child: EmptyState(
+          icon: Icons.history_rounded,
+          title: 'No predictions yet',
+          message: 'Your cattle weight estimates will appear here.',
+          action: FilledButton(
+            onPressed: () => setState(() => _selectedTabIndex = 0),
+            child: const Text('Make a prediction'),
+          ),
+        ),
+      );
+    }
+
+    final visible = _visibleHistory;
+
+    return SafeArea(
+      bottom: false,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.sm,
+          AppSpacing.xl,
+          AppSpacing.section,
+        ),
+        children: [
+          SectionHeader(
+            title: 'Prediction history',
+            subtitle: '${_history.length} saved on this device',
+            trailing: CircleIconButton(
+              icon: Icons.delete_outline_rounded,
+              tooltip: 'Clear all history',
+              onPressed: _confirmClearHistory,
+              foreground: AppColors.danger,
             ),
-          )
-        : ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Prediction History',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.grey.shade900,
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _history.clear();
-                      });
-                    },
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      size: 18,
-                    ),
-                    label: const Text('Clear All'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.red.shade700,
-                    ),
-                  ),
-                ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          SegmentedToggle(
+            segments: const ['All', 'Today'],
+            selectedIndex: _historyFilter,
+            onChanged: (i) => setState(() => _historyFilter = i),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          if (visible.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.section),
+              child: Text(
+                'Nothing recorded today yet.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
-              const SizedBox(height: 16),
-              ..._history.map(
-                (item) => _buildHistoryCard(item),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      size: 16,
-                      color: Colors.grey.shade600,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Total Predictions: ${_history.length}',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-          );
+            )
+          else
+            ...visible.map(_buildHistoryCard),
+        ],
+      ),
+    );
   }
 
-  Widget _buildHistoryCard(_PredictionHistoryItem item) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Colors.grey.shade200,
+  Future<void> _confirmClearHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade50,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+        title: const Text('Clear history?'),
+        content: const Text(
+          'This removes every saved prediction from this device. '
+          'It cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Clear all'),
           ),
         ],
       ),
+    );
+
+    if (confirmed == true && mounted) {
+      setState(_history.clear);
+    }
+  }
+
+  Widget _buildHistoryCard(_PredictionHistoryItem item) {
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Row(
         children: [
           Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.green.shade50,
-              borderRadius: BorderRadius.circular(12),
+            width: 46,
+            height: 46,
+            decoration: const BoxDecoration(
+              color: AppColors.primarySoft,
+              shape: BoxShape.circle,
             ),
-            child: Icon(
-              Icons.pets_outlined,
-              color: Colors.green.shade700,
+            child: const Icon(
+              Icons.pets_rounded,
+              color: AppColors.primary,
+              size: 20,
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  item.name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade900,
-                    fontSize: 15,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        item.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    const StatusChip(
+                      label: 'Estimated',
+                      foreground: AppColors.success,
+                      background: AppColors.successSoft,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
                   '${item.animalType} • ${item.breed}',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 13,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  _formatDate(item.date),
-                  style: TextStyle(
-                    color: Colors.grey.shade500,
-                    fontSize: 12,
-                  ),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.calendar_today_rounded,
+                      size: 11,
+                      color: AppColors.inkFaint,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      _formatDate(item.date),
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${item.weight.toStringAsFixed(1)} kg',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green.shade800,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Estimated',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade500,
-                ),
-              ),
-            ],
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            '${item.weight.toStringAsFixed(1)} kg',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryDark,
+            ),
           ),
         ],
       ),
@@ -1050,118 +1073,121 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
   // ------------------------------------------------------------
 
   Widget _buildTipsTab() {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Text(
-          'Farmer Tips & Guidelines',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: Colors.grey.shade900,
+    return SafeArea(
+      bottom: false,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.sm,
+          AppSpacing.xl,
+          AppSpacing.section,
+        ),
+        children: [
+          const SectionHeader(
+            title: 'Tips & guidelines',
+            subtitle: 'Get the most accurate estimate every time',
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Get the best results from your cattle weight predictions',
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 14,
+          const SizedBox(height: AppSpacing.xl),
+          _tipCard(
+            icon: Icons.photo_camera_outlined,
+            title: 'Take clear side photos',
+            description:
+                'Keep the whole animal visible. Shoot from the side of the '
+                'cattle for the most accurate estimate.',
+            accent: AppColors.periwinkle,
+            accentSoft: AppColors.periwinkleSoft,
           ),
-        ),
-        const SizedBox(height: 24),
-
-        _tipCard(
-          icon: Icons.camera_alt_outlined,
-          title: 'Take Clear Side Photos',
-          description: 'Keep the whole animal visible. Position the camera at the side of the cattle for the most accurate estimation.',
-          color: Colors.blue,
-        ),
-        _tipCard(
-          icon: Icons.wb_sunny_outlined,
-          title: 'Use Good Lighting',
-          description: 'Daylight provides the best visibility. Avoid strong shadows that may hide the animal\'s body shape.',
-          color: Colors.orange,
-        ),
-        _tipCard(
-          icon: Icons.straighten_outlined,
-          title: 'Stand on Level Ground',
-          description: 'Ensure the cattle is standing naturally on level ground for consistent and accurate predictions.',
-          color: Colors.purple,
-        ),
-        _tipCard(
-          icon: Icons.repeat_outlined,
-          title: 'Consistent Angle & Distance',
-          description: 'Take photos from the same distance and angle each time. This makes your weight history more reliable.',
-          color: Colors.teal,
-        ),
-        _tipCard(
-          icon: Icons.scale_outlined,
-          title: 'Confirm Important Decisions',
-          description: 'The prediction is an estimate. Always use a reliable scale for sales, treatment, or dosing decisions.',
-          color: Colors.red,
-        ),
-        _tipCard(
-          icon: Icons.timeline_outlined,
-          title: 'Track Weight Trends',
-          description: 'Use repeated predictions to monitor if your cattle are gaining or losing weight over time.',
-          color: Colors.green,
-        ),
-
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.green.shade50,
-                Colors.green.shade100.withOpacity(0.3),
+          _tipCard(
+            icon: Icons.wb_sunny_outlined,
+            title: 'Use good lighting',
+            description:
+                'Daylight gives the best visibility. Avoid strong shadows '
+                'that hide the animal’s body shape.',
+            accent: AppColors.peach,
+            accentSoft: AppColors.peachSoft,
+          ),
+          _tipCard(
+            icon: Icons.straighten_rounded,
+            title: 'Stand on level ground',
+            description:
+                'Make sure the animal is standing naturally on level ground '
+                'for consistent results.',
+            accent: AppColors.leaf,
+            accentSoft: AppColors.leafSoft,
+          ),
+          _tipCard(
+            icon: Icons.repeat_rounded,
+            title: 'Keep angle & distance consistent',
+            description:
+                'Shoot from the same distance and angle each time so your '
+                'weight history stays comparable.',
+            accent: AppColors.rose,
+            accentSoft: AppColors.roseSoft,
+          ),
+          _tipCard(
+            icon: Icons.scale_rounded,
+            title: 'Confirm important decisions',
+            description:
+                'The prediction is an estimate. Always use a reliable scale '
+                'for sales, treatment or dosing.',
+            accent: AppColors.danger,
+            accentSoft: AppColors.dangerSoft,
+          ),
+          _tipCard(
+            icon: Icons.timeline_rounded,
+            title: 'Track weight trends',
+            description:
+                'Repeat predictions over time to see whether your cattle are '
+                'gaining or losing weight.',
+            accent: AppColors.primary,
+            accentSoft: AppColors.primarySoft,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.lightbulb_outline_rounded,
+                  color: AppColors.primaryDark,
+                  size: 20,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Pro tip',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(color: AppColors.primaryDark),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Build a routine — photograph at the same time of '
+                        'day, in the same spot, for the most comparable '
+                        'results.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.5,
+                          color: AppColors.inkMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.green.shade200,
-            ),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.lightbulb_outline,
-                color: Colors.green.shade700,
-                size: 24,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Pro Tip',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: Colors.green.shade900,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Create a consistent routine. Take photos at the same time of day and in the same location for the most comparable results.',
-                      style: TextStyle(
-                        color: Colors.grey.shade700,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1169,61 +1195,30 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
     required IconData icon,
     required String title,
     required String description,
-    required Color color,
+    required Color accent,
+    required Color accentSoft,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade50,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              color: color,
-            ),
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(color: accentSoft, shape: BoxShape.circle),
+            child: Icon(icon, color: accent, size: 20),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade900,
-                    fontSize: 15,
-                  ),
-                ),
+                Text(title, style: Theme.of(context).textTheme.titleSmall),
                 const SizedBox(height: 4),
                 Text(
                   description,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 13,
-                    height: 1.4,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
@@ -1233,73 +1228,34 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
     );
   }
 
- // ------------------------------------------------------------
+  // ------------------------------------------------------------
   // MAIN BUILD
   // ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
+    const titles = ['Cattle Weight', 'History', 'Tips'];
+
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: AppColors.canvas,
       appBar: AppBar(
-        // Three Lines Menu Icon on the LEFT
-        leading: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'profile') {
-              Navigator.pushNamed(context, '/profile');
-            } else if (value == 'settings') {
-              Navigator.pushNamed(context, '/settings');
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'profile',
-              child: Row(
-                children: [
-                  Icon(Icons.person_outline, size: 22),
-                  SizedBox(width: 12),
-                  Text('Profile'),
-                ],
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'settings',
-              child: Row(
-                children: [
-                  Icon(Icons.settings_outlined, size: 22),
-                  SizedBox(width: 12),
-                  Text('Settings'),
-                ],
-              ),
-            ),
+        titleSpacing: AppSpacing.xl,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(titles[_selectedTabIndex]),
+            Text('By Jaguza', style: Theme.of(context).textTheme.labelSmall),
           ],
-          child: Container(
-            margin: const EdgeInsets.only(left: 12),
-            padding: const EdgeInsets.all(8),
-            child: const Icon(
-              Icons.menu,
-              color: Colors.grey,
-              size: 28,
-            ),
-          ),
         ),
-        title: const Text(
-          'Cattle Weight Predictor',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 22,
-          ),
-        ),
-        centerTitle: false,
-        elevation: 2,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.grey.shade900,
-        shadowColor: Colors.grey.shade200,
         actions: [
-          // Login Button in AppBar (Right side)
-          Container(
-            margin: const EdgeInsets.only(right: 8),
-            
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.md),
+            child: CircleIconButton(
+              icon: Icons.person_outline_rounded,
+              tooltip: 'Profile',
+              onPressed: () => Navigator.pushNamed(context, '/auth'),
+            ),
           ),
         ],
       ),
@@ -1312,55 +1268,37 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
         ],
       ),
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.shade200,
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.border)),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _selectedTabIndex,
-          onTap: (index) {
-            setState(() {
-              _selectedTabIndex = index;
-            });
-          },
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: Colors.green.shade700,
-          unselectedItemColor: Colors.grey.shade600,
-          selectedLabelStyle: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 12,
+        child: SafeArea(
+          top: false,
+          child: BottomNavigationBar(
+            currentIndex: _selectedTabIndex,
+            onTap: (index) => setState(() => _selectedTabIndex = index),
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.monitor_weight_outlined),
+                activeIcon: Icon(Icons.monitor_weight_rounded),
+                label: 'Predict',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.history_outlined),
+                activeIcon: Icon(Icons.history_rounded),
+                label: 'History',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.lightbulb_outline_rounded),
+                activeIcon: Icon(Icons.lightbulb_rounded),
+                label: 'Tips',
+              ),
+            ],
           ),
-          unselectedLabelStyle: const TextStyle(
-            fontSize: 12,
-          ),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Predict',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.history_outlined),
-              activeIcon: Icon(Icons.history),
-              label: 'History',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.lightbulb_outline),
-              activeIcon: Icon(Icons.lightbulb),
-              label: 'Tips',
-            ),
-          ],
         ),
       ),
     );
   }
-
 
   // ------------------------------------------------------------
   // FORMAT DATE
