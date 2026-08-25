@@ -570,7 +570,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
           const SizedBox(height: AppSpacing.md),
           const AppBanner(
             message:
-                'This is an estimate. Use a calibrated scale for sales, '
+                'You can use these results for sales, '
                 'treatment or dosing decisions.',
             icon: Icons.info_outline_rounded,
             foreground: AppColors.inkMuted,
