@@ -632,10 +632,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
                             value: 'Holstein',
                             child: Text('Holstein'),
                           ),
-                          DropdownMenuItem(
-                            value: 'Local',
-                            child: Text('Local'),
-                          ),
+                         
                           DropdownMenuItem(
                             value: 'Angus',
                             child: Text('Angus'),
