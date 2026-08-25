@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/prediction_record.dart';
 import '../services/prediction_api.dart';
@@ -49,6 +52,55 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
   // ------------------------------------------------------------
 
   int _selectedTabIndex = 0;
+
+  // ------------------------------------------------------------
+  // HISTORY PERSISTENCE
+  // ------------------------------------------------------------
+
+  static const String _historyPrefsKey = 'prediction_history_v1';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_historyPrefsKey);
+      if (raw == null || raw.isEmpty) return;
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+
+      final loaded = decoded
+          .whereType<Map<String, dynamic>>()
+          .map(_PredictionHistoryItem.fromJson)
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _history
+          ..clear()
+          ..addAll(loaded);
+      });
+    } catch (e) {
+      debugPrint('Failed to load prediction history: $e');
+    }
+  }
+
+  Future<void> _saveHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(
+        _history.map((item) => item.toJson()).toList(),
+      );
+      await prefs.setString(_historyPrefsKey, encoded);
+    } catch (e) {
+      debugPrint('Failed to save prediction history: $e');
+    }
+  }
 
   @override
   void dispose() {
@@ -291,6 +343,8 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
       _resultSaved = true;
       _savedName = name;
     });
+
+    _saveHistory();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Saved “$name” to history.')),
@@ -984,6 +1038,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
 
     if (confirmed == true && mounted) {
       setState(_history.clear);
+      _saveHistory();
     }
   }
 
@@ -1326,4 +1381,25 @@ class _PredictionHistoryItem {
     required this.weight,
     required this.date,
   });
+
+  factory _PredictionHistoryItem.fromJson(Map<String, dynamic> json) {
+    return _PredictionHistoryItem(
+      name: json['name']?.toString() ?? 'Unnamed cattle',
+      animalType: json['animal_type']?.toString() ?? 'Cow',
+      breed: json['breed']?.toString() ?? '',
+      weight: (json['weight'] as num?)?.toDouble() ?? 0.0,
+      date: DateTime.tryParse(json['date']?.toString() ?? '') ??
+          DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'animal_type': animalType,
+      'breed': breed,
+      'weight': weight,
+      'date': date.toIso8601String(),
+    };
+  }
 }
