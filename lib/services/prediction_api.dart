@@ -158,6 +158,54 @@ class PredictionApiService {
   // PREDICT WEIGHT
   // ============================================================
 
+  /// Validates a captured image before the camera returns it to the form.
+  ///
+  /// This uses the backend's existing cattle detector without creating a
+  /// prediction record in the app.
+  Future<bool> validateCattleImage({
+    required XFile image,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/predict');
+    final imageBytes = await image.readAsBytes();
+
+    if (imageBytes.isEmpty) {
+      throw PredictionApiException(
+        'The captured image is empty.',
+        isFriendlyMessage: true,
+      );
+    }
+
+    final request = http.MultipartRequest('POST', uri)
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          imageBytes,
+          filename: image.name,
+        ),
+      );
+
+    final response = await request.send().timeout(
+          const Duration(seconds: 120),
+        );
+    final body = await response.stream.bytesToString();
+
+    if (response.statusCode != 200) {
+      throw PredictionApiException(
+        'Cattle validation failed: ${response.statusCode} $body',
+        statusCode: response.statusCode,
+      );
+    }
+
+    final decoded = jsonDecode(body);
+    if (decoded is! Map<String, dynamic>) {
+      throw PredictionApiException(
+        'The prediction server returned an unexpected response.',
+      );
+    }
+
+    return decoded['valid'] == true && decoded['cattle_detected'] == true;
+  }
+
   Future<PredictionRecord> predictWeight({
     required String animalId,
     required String animalName,

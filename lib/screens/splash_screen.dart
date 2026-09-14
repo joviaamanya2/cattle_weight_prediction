@@ -172,7 +172,7 @@ class _SplashScreenState extends State<SplashScreen>
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 15),
                     child: Text(
-                      'Estimate cattle weight using photos.',
+                      'Predict cattle weight using photos.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 15,

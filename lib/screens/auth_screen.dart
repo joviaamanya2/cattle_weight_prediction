@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/user_profile.dart';
+import '../services/user_profile_service.dart';
 import '../theme/app_theme.dart';
 
 // ============================================================
@@ -38,7 +40,28 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     // Simulate API call
-    Future.delayed(const Duration(seconds: 2), () {
+    Future.delayed(const Duration(seconds: 2), () async {
+      if (!mounted) return;
+
+      // There is no account backend to check credentials against, so a
+      // returning profile is kept as-is and a fresh sign-in gets a minimal
+      // profile derived from the entered email.
+      final email = _emailController.text.trim();
+      final existing = await UserProfileService.instance.load();
+
+      if (existing == null) {
+        final namePart = email.contains('@') ? email.split('@').first : email;
+        final derivedName = namePart.isEmpty
+            ? 'Farmer'
+            : namePart[0].toUpperCase() + namePart.substring(1);
+
+        await UserProfileService.instance.save(
+          UserProfile(name: derivedName, email: email, role: 'Farmer'),
+        );
+      }
+
+      await UserProfileService.instance.setLoggedIn(true);
+
       if (!mounted) return;
 
       setState(() {
@@ -414,7 +437,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     // Simulate API call
-    Future.delayed(const Duration(seconds: 2), () {
+    Future.delayed(const Duration(seconds: 2), () async {
+      if (!mounted) return;
+
+      await UserProfileService.instance.save(
+        UserProfile(
+          name: _nameController.text.trim(),
+          email: _emailController.text.trim(),
+          role: _selectedRole,
+        ),
+      );
+      await UserProfileService.instance.setLoggedIn(true);
+
       if (!mounted) return;
 
       setState(() {

@@ -379,6 +379,7 @@ class AppTextField extends StatelessWidget {
     this.keyboardType,
     this.textInputAction,
     this.enabled = true,
+    this.onChanged,
   });
 
   final String label;
@@ -390,6 +391,7 @@ class AppTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final bool enabled;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -403,6 +405,7 @@ class AppTextField extends StatelessWidget {
         enabled: enabled,
         keyboardType: keyboardType,
         textInputAction: textInputAction,
+        onChanged: onChanged,
         style: const TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w500,

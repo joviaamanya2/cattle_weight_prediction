@@ -1,13 +1,18 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/prediction_record.dart';
+import '../models/user_profile.dart';
 import '../services/prediction_api.dart';
+import '../services/user_profile_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ui_kit.dart';
+import 'guided_camera_screen.dart';
+import 'profile_screen.dart';
 
 class PredictionHomePage extends StatefulWidget {
   const PredictionHomePage({super.key});
@@ -32,11 +37,15 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
 
   bool _isPredicting = false;
 
-  /// Whether the result on screen has been written to history yet. The name
-  /// is only collected once a result exists, so both live here rather than
-  /// in the prediction form.
+  /// Whether the result on screen has been written to history yet.
   bool _resultSaved = false;
-  String? _savedName;
+
+  /// The name typed into the Cattle details form, or "Unnamed cattle" if
+  /// left blank.
+  String get _currentName {
+    final trimmed = _nameController.text.trim();
+    return trimmed.isEmpty ? 'Unnamed cattle' : trimmed;
+  }
 
   // ------------------------------------------------------------
   // LOCAL HISTORY
@@ -59,10 +68,40 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
 
   static const String _historyPrefsKey = 'prediction_history_v1';
 
+  // ------------------------------------------------------------
+  // USER PROFILE
+  // ------------------------------------------------------------
+
+  /// The signed-in profile, or null when logged out — drives both what the
+  /// profile icon shows and where it navigates.
+  UserProfile? _userProfile;
+
+  Future<void> _loadUserProfile() async {
+    final loggedIn = await UserProfileService.instance.isLoggedIn();
+    final profile = loggedIn ? await UserProfileService.instance.load() : null;
+    if (!mounted) return;
+    setState(() => _userProfile = profile);
+  }
+
+  Future<void> _openProfile() async {
+    if (_userProfile == null) {
+      await Navigator.pushNamed(context, '/auth');
+    } else {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ProfileScreen()),
+      );
+    }
+
+    // Covers edits made on the profile screen (photo, name) and signing in
+    // or out, all of which should be reflected on the icon right away.
+    await _loadUserProfile();
+  }
+
   @override
   void initState() {
     super.initState();
     _loadHistory();
+    _loadUserProfile();
   }
 
   Future<void> _loadHistory() async {
@@ -132,7 +171,6 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
         _prediction = null;
         _errorMessage = null;
         _resultSaved = false;
-        _savedName = null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -145,6 +183,21 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
     }
   }
 
+  Future<void> _openGuidedCamera() async {
+    final XFile? image = await Navigator.of(context).push<XFile>(
+      MaterialPageRoute(builder: (_) => const GuidedCameraScreen()),
+    );
+
+    if (image == null || !mounted) return;
+
+    setState(() {
+      _selectedImage = image;
+      _prediction = null;
+      _errorMessage = null;
+      _resultSaved = false;
+    });
+  }
+
   // ------------------------------------------------------------
   // CLEAR IMAGE
   // ------------------------------------------------------------
@@ -155,7 +208,6 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
       _prediction = null;
       _errorMessage = null;
       _resultSaved = false;
-      _savedName = null;
     });
   }
 
@@ -177,15 +229,12 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
       _prediction = null;
       _errorMessage = null;
       _resultSaved = false;
-      _savedName = null;
     });
 
     try {
-      // The animal is still unnamed at this point — naming happens in the
-      // save prompt once a result comes back.
       final result = await PredictionApiService.instance.predictWeight(
         animalId: 'TEMP-${DateTime.now().millisecondsSinceEpoch}',
-        animalName: 'Unnamed cattle',
+        animalName: _currentName,
         animalBreed: _selectedBreed,
         image: _selectedImage!,
       );
@@ -227,8 +276,6 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
   Future<void> _promptSaveResult() async {
     final record = _prediction;
     if (record == null) return;
-
-    _nameController.clear();
 
     final bool? save = await showDialog<bool>(
       context: context,
@@ -280,19 +327,13 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '$_animalTypeLabel • $_selectedBreed',
+                    _currentName == 'Unnamed cattle'
+                        ? '$_animalTypeLabel • $_selectedBreed'
+                        : '$_currentName • $_animalTypeLabel • $_selectedBreed',
                     style: Theme.of(ctx).textTheme.bodySmall,
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            AppTextField(
-              label: 'Cattle name',
-              controller: _nameController,
-              hint: 'e.g. Nakato',
-              helper: 'Leave blank to save as “Unnamed cattle”.',
-              textInputAction: TextInputAction.done,
             ),
           ],
         ),
@@ -319,15 +360,15 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
     if (!mounted) return;
 
     if (save == true) {
-      _saveCurrentResult(_nameController.text.trim());
+      _saveCurrentResult();
     }
   }
 
-  void _saveCurrentResult(String rawName) {
+  void _saveCurrentResult() {
     final record = _prediction;
     if (record == null) return;
 
-    final String name = rawName.isEmpty ? 'Unnamed cattle' : rawName;
+    final String name = _currentName;
 
     setState(() {
       _history.insert(
@@ -341,7 +382,6 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
         ),
       );
       _resultSaved = true;
-      _savedName = name;
     });
 
     _saveHistory();
@@ -557,21 +597,22 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
-                  'Estimated from the submitted photo',
+                  'Calculated from the submitted photo',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
+          if (_currentName != 'Unnamed cattle')
+            _resultRow('Cattle name', _currentName),
           _resultRow('Animal type', _animalTypeLabel),
           _resultRow('Breed', _selectedBreed),
-          if (_savedName != null) _resultRow('Cattle name', _savedName!),
           const SizedBox(height: AppSpacing.md),
           const AppBanner(
             message:
-                'This is an estimate. Use a calibrated scale for sales, '
-                'treatment or dosing decisions.',
+                'Use these results for sales, treatment and dosing '
+                'decisions.',
             icon: Icons.info_outline_rounded,
             foreground: AppColors.inkMuted,
             background: AppColors.field,
@@ -660,6 +701,16 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
                 AppCard(
                   child: Column(
                     children: [
+                      AppTextField(
+                        label: 'Cattle name',
+                        controller: _nameController,
+                        hint: 'e.g. Nakato',
+                        helper: 'Leave blank to record as “Unnamed cattle”.',
+                        textInputAction: TextInputAction.done,
+                        enabled: !_isPredicting,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
                       AppDropdownField<String>(
                         label: 'Animal type',
                         required: true,
@@ -725,7 +776,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
                 // ------------------------------------------------
                 const SectionHeader(
                   title: 'Cattle photo',
-                  subtitle: 'A clear side view gives the best estimate',
+                  subtitle: 'A clear side view gives the best result',
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -751,9 +802,8 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
                           const SizedBox(width: AppSpacing.md),
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: _isPredicting
-                                  ? null
-                                  : () => _pickImage(ImageSource.camera),
+                              onPressed:
+                                  _isPredicting ? null : _openGuidedCamera,
                               icon: const Icon(
                                 Icons.photo_camera_outlined,
                                 size: 18,
@@ -858,7 +908,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  'Snap a photo and get an instant estimate — no scale needed.',
+                  'Snap a photo and get an instant prediction — no scale needed.',
                   style: TextStyle(
                     fontSize: 13,
                     height: 1.45,
@@ -955,7 +1005,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
         child: EmptyState(
           icon: Icons.history_rounded,
           title: 'No predictions yet',
-          message: 'Your cattle weight estimates will appear here.',
+          message: 'Your cattle weight predictions will appear here.',
           action: FilledButton(
             onPressed: () => setState(() => _selectedTabIndex = 0),
             child: const Text('Make a prediction'),
@@ -1077,7 +1127,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     const StatusChip(
-                      label: 'Estimated',
+                      label: 'Predicted',
                       foreground: AppColors.success,
                       background: AppColors.successSoft,
                     ),
@@ -1137,7 +1187,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
         children: [
           const SectionHeader(
             title: 'Tips & guidelines',
-            subtitle: 'Get the most accurate estimate every time',
+            subtitle: 'Get the most accurate prediction every time',
           ),
           const SizedBox(height: AppSpacing.xl),
           _tipCard(
@@ -1145,7 +1195,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
             title: 'Take clear side photos',
             description:
                 'Keep the whole animal visible. Shoot from the side of the '
-                'cattle for the most accurate estimate.',
+                'cattle for the most accurate prediction.',
             accent: AppColors.periwinkle,
             accentSoft: AppColors.periwinkleSoft,
           ),
@@ -1180,7 +1230,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
             icon: Icons.scale_rounded,
             title: 'Confirm important decisions',
             description:
-                'The prediction is an estimate. Always use a reliable scale '
+                'This is only a prediction. Always use a reliable scale '
                 'for sales, treatment or dosing.',
             accent: AppColors.danger,
             accentSoft: AppColors.dangerSoft,
@@ -1281,6 +1331,53 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
   }
 
   // ------------------------------------------------------------
+  // PROFILE BUTTON
+  // ------------------------------------------------------------
+
+  /// Shows the signed-in user's photo once one is set, falling back to a
+  /// plain person icon when logged out or no photo has been chosen yet.
+  Widget _buildProfileButton() {
+    final avatarPath = _userProfile?.avatarPath;
+
+    if (avatarPath == null) {
+      return CircleIconButton(
+        icon: Icons.person_outline_rounded,
+        tooltip: 'Profile',
+        onPressed: _openProfile,
+      );
+    }
+
+    return Tooltip(
+      message: 'Profile',
+      child: Semantics(
+        button: true,
+        label: 'Profile',
+        child: InkWell(
+          onTap: _openProfile,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.border),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Image.file(
+              File(avatarPath),
+              fit: BoxFit.cover,
+              errorBuilder: (_, error, stackTrace) => const Icon(
+                Icons.person_rounded,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------
   // MAIN BUILD
   // ------------------------------------------------------------
 
@@ -1303,11 +1400,7 @@ class _PredictionHomePageState extends State<PredictionHomePage> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: AppSpacing.md),
-            child: CircleIconButton(
-              icon: Icons.person_outline_rounded,
-              tooltip: 'Profile',
-              onPressed: () => Navigator.pushNamed(context, '/auth'),
-            ),
+            child: _buildProfileButton(),
           ),
         ],
       ),
