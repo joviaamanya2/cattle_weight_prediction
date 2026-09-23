@@ -32,6 +32,8 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/api/venv/
+/api/__pycache__/
 
 # Symbolication related
 app.*.symbols
